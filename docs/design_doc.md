@@ -58,7 +58,7 @@ The LLM cannot bypass verification — it only generates the response after Pyth
 
 Most agent implementations make one LLM call per turn that both understands the input and generates the response. This conflates two very different tasks. A dedicated extraction layer (extraction = structured output, temp=0, JSON-only) and a separate response layer (natural language, temp=0.3) is more testable, more predictable, and mirrors real NLU/NLG architecture.
 
-The extraction model uses LiteLLM with a Groq-hosted model for fast structured parsing. Response generation uses a larger Groq model for higher-quality responses.
+The extraction model uses LiteLLM with a Groq-hosted model for fast structured parsing. Output is validated with Pydantic and retried once on schema failure, then backed by deterministic regex fallbacks. Response generation uses a larger Groq model for higher-quality responses.
 
 ### 3. Verification is Pure Python
 
@@ -109,12 +109,8 @@ This agent operates in India's financial services and debt collection space, whi
 
 1. **Replace LiteLLM extraction model with a fine-tuned smaller model**: The extraction task is well-defined and has a bounded output space. A fine-tuned `phi-3-mini` or similar would be 10x cheaper and faster with better reliability on domain-specific patterns (Indian names, Aadhaar formats, regional date formats).
 
-2. **Structured output validation with Pydantic**: The extraction layer currently uses JSON mode and manual parsing. Using `instructor` + Pydantic models would give stronger output guarantees and automatic retry on malformed extraction.
+2. **Session persistence**: Map session IDs to serialized `ConversationState` in Redis with a TTL. This allows conversations to survive process restarts and enables audit logging without PII exposure.
 
-3. **Retry on extraction failure with fallback heuristics**: Currently, if extraction fails, the agent returns empty fields and asks the user to repeat themselves. A deterministic regex fallback (account ID, 4-digit sequences, 16-digit sequences) would be more resilient.
+3. **Audit logging pipeline**: Separate from application logs — structured events (turn start, verification attempt, API call, verification result, payment result) with PII stripped, shipped to a SIEM for compliance monitoring.
 
-4. **Session persistence**: Map session IDs to serialized `ConversationState` in Redis with a TTL. This allows conversations to survive process restarts and enables audit logging without PII exposure.
-
-5. **Audit logging pipeline**: Separate from application logs — structured events (turn start, verification attempt, API call, verification result, payment result) with PII stripped, shipped to a SIEM for compliance monitoring.
-
-6. **Load testing against the API**: The current retry/backoff logic assumes a well-behaved upstream. Under real load, the payment API may rate-limit or have higher latency. Circuit breaker pattern (using `pybreaker` or similar) would prevent cascading failures.
+4. **Load testing against the API**: The current retry/backoff logic assumes a well-behaved upstream. Under real load, the payment API may rate-limit or have higher latency. Circuit breaker pattern (using `pybreaker` or similar) would prevent cascading failures.

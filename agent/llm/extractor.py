@@ -4,9 +4,12 @@ import logging
 import os
 import re
 
+from pydantic import ValidationError
+
 from .client import chat_completion, get_message_content, parse_json_object
 from .prompts import EXTRACTION_SYSTEM_PROMPT
 from ..domain.models import ExtractedFields
+from ..domain.schemas import ExtractionPayload
 from ..domain.stage import Stage
 from ..domain.state import ConversationState
 
@@ -15,46 +18,24 @@ logger = logging.getLogger(__name__)
 EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "groq/llama-3.1-8b-instant")
 
 
+
 def extract_fields(user_input: str, stage: Stage, state: ConversationState) -> ExtractedFields:
     prompt = _build_extraction_prompt(user_input, stage, state)
 
     extracted = ExtractedFields()
 
     try:
-        response = chat_completion(
-            model=EXTRACTION_MODEL,
-            messages=[
-                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-            max_tokens=300,
-        )
-        raw = get_message_content(response)
-        data = parse_json_object(raw)
-        if not data:
-            raise ValueError("JSON parse failed")
-        extracted = _parse_extraction_response(data)
+        extracted = _attempt_extraction(prompt, use_json_mode=True)
     except Exception as e:
         logger.warning("Field extraction failed", extra={"error": str(e), "stage": stage.name})
         try:
-            response = chat_completion(
-                model=EXTRACTION_MODEL,
-                messages=[
-                    {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0,
-                max_tokens=300,
+            retry_prompt = (
+                f"{prompt}\nReturn ONLY a JSON object. Do not include any extra text or code fences."
             )
-            raw = get_message_content(response)
-            data = parse_json_object(raw)
-            if data:
-                extracted = _parse_extraction_response(data)
+            extracted = _attempt_extraction(retry_prompt, use_json_mode=False)
         except Exception as retry_error:
             logger.warning(
-                "Field extraction fallback failed",
+                "Field extraction retry failed",
                 extra={"error": str(retry_error), "stage": stage.name},
             )
 
@@ -62,29 +43,52 @@ def extract_fields(user_input: str, stage: Stage, state: ConversationState) -> E
     return _merge_fields(extracted, fallback)
 
 
+def _attempt_extraction(prompt: str, use_json_mode: bool) -> ExtractedFields:
+    response = chat_completion(
+        model=EXTRACTION_MODEL,
+        messages=[
+            {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"} if use_json_mode else None,
+        max_tokens=300,
+    )
+    raw = get_message_content(response)
+    data = parse_json_object(raw)
+    if not data:
+        raise ValueError("JSON parse failed")
+    return _parse_extraction_response(data)
+
+
 def _parse_extraction_response(data: dict) -> ExtractedFields:
+    try:
+        payload = ExtractionPayload.model_validate(data)
+    except ValidationError as exc:
+        raise ValueError("Extraction validation failed") from exc
+
     fields = ExtractedFields()
 
-    if data.get("account_id"):
-        fields.account_id = str(data["account_id"]).strip().upper()
-    if data.get("full_name"):
-        fields.full_name = str(data["full_name"]).strip()
-    if data.get("dob"):
-        fields.dob = str(data["dob"]).strip()
-    if data.get("aadhaar_last4"):
-        fields.aadhaar_last4 = str(data["aadhaar_last4"]).strip()
-    if data.get("pincode"):
-        fields.pincode = str(data["pincode"]).strip()
-    if data.get("amount"):
-        fields.amount = str(data["amount"]).strip()
-    if data.get("card_number"):
-        fields.card_number = re.sub(r"\D", "", str(data["card_number"]))
-    if data.get("cvv"):
-        fields.cvv = re.sub(r"\D", "", str(data["cvv"]))
-    if data.get("expiry"):
-        fields.expiry = str(data["expiry"]).strip()
-    if data.get("cardholder_name"):
-        fields.cardholder_name = str(data["cardholder_name"]).strip()
+    if payload.account_id:
+        fields.account_id = payload.account_id.strip().upper()
+    if payload.full_name:
+        fields.full_name = payload.full_name.strip()
+    if payload.dob:
+        fields.dob = payload.dob.strip()
+    if payload.aadhaar_last4:
+        fields.aadhaar_last4 = payload.aadhaar_last4.strip()
+    if payload.pincode:
+        fields.pincode = payload.pincode.strip()
+    if payload.amount is not None:
+        fields.amount = str(payload.amount).strip()
+    if payload.card_number:
+        fields.card_number = re.sub(r"\D", "", str(payload.card_number))
+    if payload.cvv:
+        fields.cvv = re.sub(r"\D", "", str(payload.cvv))
+    if payload.expiry:
+        fields.expiry = payload.expiry.strip()
+    if payload.cardholder_name:
+        fields.cardholder_name = payload.cardholder_name.strip()
 
     return fields
 

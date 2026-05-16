@@ -3,6 +3,7 @@
 from .stage import Stage
 from .models import ExtractedFields, AccountData, CardDetails
 from .state import ConversationState, MAX_VERIFICATION_RETRIES, MAX_PAYMENT_RETRIES, MAX_CARD_RETRIES
+from .schemas import ExtractionPayload
 
 __all__ = [
     "Stage",
@@ -13,4 +14,5 @@ __all__ = [
     "MAX_VERIFICATION_RETRIES",
     "MAX_PAYMENT_RETRIES",
     "MAX_CARD_RETRIES",
+    "ExtractionPayload",
 ]
