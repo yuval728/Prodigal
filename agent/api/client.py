@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 
-BASE_URL = os.getenv("PAYMENT_API_BASE_URL", "http://localhost:8000")
+BASE_URL = os.getenv("PAYMENT_API_BASE_URL", "https://se-payment-verification-api.service.external.usea2.aws.prodigaltech.com")
 REQUEST_TIMEOUT = 10.0  # seconds
 MAX_RETRIES = 3
 BACKOFF_BASE = 1.5

@@ -235,7 +235,7 @@ Note: ACC1004's DOB is Feb 29, 1988 — a valid leap year date. The agent handle
 | `ANTHROPIC_API_KEY` | (optional) | LiteLLM key for Anthropic models |
 | `EXTRACTION_MODEL` | `groq/llama-3.1-8b-instant` | Model for field extraction |
 | `RESPONSE_MODEL` | `groq/llama-3.1-70b-versatile` | Model for response generation |
-| `JUDGE_MODEL` | `gemini/gemini-3.1-pro-latest` | Model for eval scoring |
+| `JUDGE_MODEL` | `gemini/gemini-3.1-pro` | Model for eval scoring |
 
 ---
 
