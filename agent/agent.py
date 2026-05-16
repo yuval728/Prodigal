@@ -96,6 +96,9 @@ class Agent:
         extracted = extract_fields(user_input, state.stage, state)
         state.last_extraction = extracted
 
+        # Stash early card details for later use (do not act on them yet)
+        self._stash_pending_card_fields(extracted)
+
         # --- Route to the appropriate stage handler ---
         response_message = self._route(user_input, extracted)
 
@@ -369,6 +372,8 @@ class Agent:
         """
         state = self._state
 
+        extracted = self._merge_pending_card_fields(extracted)
+
         # Initialize card details container if needed
         if state.card_details is None:
             state.card_details = CardDetails(
@@ -386,7 +391,6 @@ class Agent:
                 card.card_number = card_num
                 state.card_attempts = 0
             elif card_error:
-                state.card_attempts += 1
                 errors.append(card_error)
 
         # --- CVV ---
@@ -418,6 +422,9 @@ class Agent:
 
         # If there were validation errors, surface the first one
         if errors:
+            state.card_attempts += 1
+            if state.card_attempts >= MAX_CARD_RETRIES:
+                return self._close("card_retry_exhausted")
             return generate_response(state, {
                 "action": "error",
                 "data": {"error_message": errors[0]},
@@ -471,7 +478,7 @@ class Agent:
         )
 
         # Clear card data immediately — regulatory requirement
-        state.clear_card_details()
+        state.clear_all_card_data()
 
         if isinstance(result, PaymentSuccess):
             state.transaction_id = result.transaction_id
@@ -517,6 +524,7 @@ class Agent:
         """
         state = self._state
         state.stage = Stage.CLOSED
+        state.clear_all_card_data()
 
         close_contexts = {
             "verification_exhausted": (
@@ -549,3 +557,38 @@ class Agent:
             "data": {"reason": reason, "error_message": error_message},
             "context": context,
         })
+
+    # ---------------------------------------------------------------------
+    # Card pre-collection helpers
+    # ---------------------------------------------------------------------
+
+    def _stash_pending_card_fields(self, extracted: ExtractedFields) -> None:
+        """Store card fields provided before CARD_COLLECTION stage."""
+        state = self._state
+        if state.stage in (Stage.CARD_COLLECTION, Stage.PAYMENT_PROCESSING, Stage.CLOSED):
+            return
+
+        if extracted.card_number and not state.pending_card_number:
+            state.pending_card_number = extracted.card_number
+        if extracted.cvv and not state.pending_cvv:
+            state.pending_cvv = extracted.cvv
+        if extracted.expiry and not state.pending_expiry:
+            state.pending_expiry = extracted.expiry
+        if extracted.cardholder_name and not state.pending_cardholder_name:
+            state.pending_cardholder_name = extracted.cardholder_name
+
+    def _merge_pending_card_fields(self, extracted: ExtractedFields) -> ExtractedFields:
+        """Merge any pending card fields into the current extraction."""
+        state = self._state
+
+        if state.pending_card_number and not extracted.card_number:
+            extracted.card_number = state.pending_card_number
+        if state.pending_cvv and not extracted.cvv:
+            extracted.cvv = state.pending_cvv
+        if state.pending_expiry and not extracted.expiry:
+            extracted.expiry = state.pending_expiry
+        if state.pending_cardholder_name and not extracted.cardholder_name:
+            extracted.cardholder_name = state.pending_cardholder_name
+
+        state.clear_pending_card_details()
+        return extracted

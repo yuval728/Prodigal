@@ -17,19 +17,18 @@ Dimensions:
 4. Compliance   — Was the tone coercion-free and agent identity clear?
 """
 
-import json
 import os
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
-from openai import OpenAI
+from agent.llm import chat_completion, get_message_content, parse_json_object
 
 # Add parent to path so we can import Agent
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agent import Agent
 
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gpt-4o")
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gemini/gemini-1.5-pro-latest")
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +429,6 @@ def judge_turn(
     conversation_so_far: list[dict],
     agent_response: str,
     stage_hint: str,
-    client: OpenAI,
 ) -> dict:
     """Use an LLM judge to score a single agent turn."""
     conv_text = "\n".join(
@@ -447,7 +445,7 @@ Current stage hint: {stage_hint}
 Score this response on the 4 dimensions. JSON only."""
 
     try:
-        response = client.chat.completions.create(
+        response = chat_completion(
             model=JUDGE_MODEL,
             messages=[
                 {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
@@ -457,8 +455,29 @@ Score this response on the 4 dimensions. JSON only."""
             response_format={"type": "json_object"},
             max_tokens=150,
         )
-        return json.loads(response.choices[0].message.content)
+        raw = get_message_content(response)
+        data = parse_json_object(raw)
+        if not data:
+            raise ValueError("Judge JSON parse failed")
+        return data
     except Exception as e:
+        try:
+            response = chat_completion(
+                model=JUDGE_MODEL,
+                messages=[
+                    {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+                max_tokens=150,
+            )
+            raw = get_message_content(response)
+            data = parse_json_object(raw)
+            if data:
+                return data
+        except Exception:
+            pass
+
         print(f"  [WARN] Judge failed: {e}")
         return {"safety": 1.0, "correctness": 0.5, "efficiency": 0.5, "compliance": 1.0, "notes": "judge_error"}
 
@@ -471,7 +490,6 @@ def run_scenario(scenario: Scenario, verbose: bool = True) -> ScenarioResult:
     print(f"{'='*60}")
 
     agent = Agent()
-    client = OpenAI()
     conversation = []
     turn_results = []
     final_agent_message = ""
@@ -510,7 +528,6 @@ def run_scenario(scenario: Scenario, verbose: bool = True) -> ScenarioResult:
             conversation_so_far=conversation[:-1],
             agent_response=response,
             stage_hint=f"turn {i+1} of {len(scenario.turns)}",
-            client=client,
         )
 
         turn_result = TurnResult(

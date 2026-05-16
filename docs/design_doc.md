@@ -15,7 +15,8 @@ User Input
 │  │  Extraction  │    │     State Machine Router     │   │
 │  │  Layer (LLM) │───▶│  GREETING                    │   │
 │  │              │    │  ACCOUNT_LOOKUP  ──▶ API     │   │
-│  │  gpt-4o-mini │    │  IDENTITY_COLLECTION         │   │
+│  │  LiteLLM     │    │  IDENTITY_COLLECTION         │   │
+│  │  groq/llama-3.1-8b-instant                         │
 │  │  temp=0      │    │  VERIFICATION  (pure Python) │   │
 │  │  JSON output │    │  BALANCE_DISCLOSURE          │   │
 │  └──────────────┘    │  CARD_COLLECTION             │   │
@@ -23,7 +24,8 @@ User Input
 │  ┌──────────────┐    │  CLOSED                      │   │
 │  │  Response    │◀───┴──────────────────────────────┘   │
 │  │  Layer (LLM) │                                       │
-│  │  gpt-4o      │                                       │
+│  │  LiteLLM     │                                       │
+│  │  groq/llama-3.1-70b-versatile                        │
 │  │  temp=0.3    │                                       │
 │  └──────────────┘                                       │
 └─────────────────────────────────────────────────────────┘
@@ -36,11 +38,11 @@ User Input
 
 | Layer | Responsibility | LLM? |
 |---|---|---|
-| `extractor.py` | Parse structured fields from free-form text | Yes (gpt-4o-mini, temp=0) |
+| `extractor.py` | Parse structured fields from free-form text | Yes (LiteLLM, temp=0) |
 | `agent.py` | State machine, transitions, business logic | No |
 | `validators.py` | Input validation, Luhn check, date parsing | No |
 | `tools.py` | API calls with retry/backoff | No |
-| `responder.py` | Generate natural language responses | Yes (gpt-4o, temp=0.3) |
+| `responder.py` | Generate natural language responses | Yes (LiteLLM, temp=0.3) |
 
 ---
 
@@ -56,7 +58,7 @@ The LLM cannot bypass verification — it only generates the response after Pyth
 
 Most agent implementations make one LLM call per turn that both understands the input and generates the response. This conflates two very different tasks. A dedicated extraction layer (extraction = structured output, temp=0, JSON-only) and a separate response layer (natural language, temp=0.3) is more testable, more predictable, and mirrors real NLU/NLG architecture.
 
-The extraction model is gpt-4o-mini — it's cheaper and faster for a classification/extraction task. Response generation uses gpt-4o for quality.
+The extraction model uses LiteLLM with a Groq-hosted model for fast structured parsing. Response generation uses a larger Groq model for higher-quality responses.
 
 ### 3. Verification is Pure Python
 
@@ -105,7 +107,7 @@ This agent operates in India's financial services and debt collection space, whi
 
 ## What I Would Improve With More Time
 
-1. **Replace gpt-4o-mini extraction with a fine-tuned smaller model**: The extraction task is well-defined and has a bounded output space. A fine-tuned `phi-3-mini` or similar would be 10x cheaper and faster with better reliability on domain-specific patterns (Indian names, Aadhaar formats, regional date formats).
+1. **Replace LiteLLM extraction model with a fine-tuned smaller model**: The extraction task is well-defined and has a bounded output space. A fine-tuned `phi-3-mini` or similar would be 10x cheaper and faster with better reliability on domain-specific patterns (Indian names, Aadhaar formats, regional date formats).
 
 2. **Structured output validation with Pydantic**: The extraction layer currently uses JSON mode and manual parsing. Using `instructor` + Pydantic models would give stronger output guarantees and automatic retry on malformed extraction.
 

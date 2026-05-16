@@ -37,7 +37,7 @@ class ExtractedFields:
     """
     account_id:     Optional[str] = None
     full_name:      Optional[str] = None
-    dob:            Optional[str] = None    # normalized to YYYY-MM-DD
+    dob:            Optional[str] = None    # raw DOB string from user input
     aadhaar_last4:  Optional[str] = None    # 4 digits, string
     pincode:        Optional[str] = None    # 6 digits, string
     amount:         Optional[float] = None
@@ -106,6 +106,10 @@ class ConversationState:
     provided_pincode: Optional[str]       = None
     payment_amount: Optional[float]       = None
     card_details:   Optional[CardDetails] = None
+    pending_card_number: Optional[str] = None
+    pending_cvv: Optional[str] = None
+    pending_expiry: Optional[str] = None
+    pending_cardholder_name: Optional[str] = None
 
     # -- Verification tracking --
     verified:               bool = False
@@ -137,6 +141,18 @@ class ConversationState:
         the transaction call (PCI-DSS adjacency, RBI DPSS guidelines).
         """
         self.card_details = None
+
+    def clear_pending_card_details(self) -> None:
+        """Clear any pre-collected card details from earlier stages."""
+        self.pending_card_number = None
+        self.pending_cvv = None
+        self.pending_expiry = None
+        self.pending_cardholder_name = None
+
+    def clear_all_card_data(self) -> None:
+        """Clear both active and pending card data."""
+        self.clear_card_details()
+        self.clear_pending_card_details()
 
     def is_closed(self) -> bool:
         return self.stage == Stage.CLOSED

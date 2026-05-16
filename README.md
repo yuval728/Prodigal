@@ -33,43 +33,52 @@ run_agent.py        # CLI runner (interactive + demo modes)
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Install dependencies (uv)
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 2. Set up environment
 
+Create a `.env` file with your LiteLLM provider keys:
+
 ```bash
-cp .env.example .env
-# Edit .env and add your OpenAI API key:
-# OPENAI_API_KEY=sk-...
+GROQ_API_KEY=...
+GEMINI_API_KEY=...
+```
+
+Optional model overrides:
+
+```bash
+EXTRACTION_MODEL=groq/llama-3.1-8b-instant
+RESPONSE_MODEL=groq/llama-3.1-70b-versatile
+JUDGE_MODEL=gemini/gemini-1.5-pro-latest
 ```
 
 ### 3. Run interactive mode
 
 ```bash
-python run_agent.py
+uv run python run_agent.py
 ```
 
 ### 4. Run pre-scripted demo
 
 ```bash
-python run_agent.py --demo
+uv run python run_agent.py --demo
 ```
 
 ### 5. Run evaluation
 
 ```bash
 # Full eval suite (15 scenarios)
-python -m eval.evaluator
+uv run python -m eval.evaluator
 
 # Single scenario
-python -m eval.evaluator --scenario happy_path_messy
+uv run python -m eval.evaluator --scenario happy_path_messy
 
 # Quiet mode (summary only)
-python -m eval.evaluator --quiet
+uv run python -m eval.evaluator --quiet
 ```
 
 ---
@@ -205,16 +214,17 @@ Note: ACC1004's DOB is Feb 29, 1988 — a valid leap year date. The agent handle
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY` | (required) | OpenAI API key |
-| `EXTRACTION_MODEL` | `gpt-4o-mini` | Model for field extraction |
-| `RESPONSE_MODEL` | `gpt-4o` | Model for response generation |
-| `JUDGE_MODEL` | `gpt-4o` | Model for eval scoring |
+| `GROQ_API_KEY` | (optional) | LiteLLM key for Groq models |
+| `GEMINI_API_KEY` | (optional) | LiteLLM key for Gemini models |
+| `EXTRACTION_MODEL` | `groq/llama-3.1-8b-instant` | Model for field extraction |
+| `RESPONSE_MODEL` | `groq/llama-3.1-70b-versatile` | Model for response generation |
+| `JUDGE_MODEL` | `gemini/gemini-2.5-pro-latest` | Model for eval scoring |
 
 ---
 
 ## Known Limitations
 
 1. **No session persistence** — if the process restarts mid-conversation, state is lost
-2. **OpenAI dependency** — can be swapped for any OpenAI-compatible API via `OPENAI_BASE_URL`
+2. **LiteLLM dependency** — provider routing is configured via LiteLLM model names and API keys
 3. **English only** — extraction prompts and response generation are English-only
 4. **Name normalization** — the spec requires strict case-sensitive matching; a user who registered as "NITHIN JAIN" (all caps) will fail verification with "Nithin Jain". This is correct per spec.

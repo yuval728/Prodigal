@@ -15,13 +15,13 @@ import logging
 import os
 from typing import Optional
 
-from openai import OpenAI
+from .llm import chat_completion, get_message_content
 
 from .state import ConversationState, Stage
 
 logger = logging.getLogger(__name__)
 
-RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "gpt-4o")
+RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "groq/llama-3.1-70b-versatile")
 
 
 SYSTEM_PROMPT = """
@@ -88,8 +88,7 @@ Generate a single, clear agent response for this situation.
 """.strip()
 
     try:
-        client = OpenAI()
-        response = client.chat.completions.create(
+        response = chat_completion(
             model=RESPONSE_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -98,7 +97,7 @@ Generate a single, clear agent response for this situation.
             temperature=0.3,    # Some variation in phrasing, but mostly consistent
             max_tokens=250,
         )
-        return response.choices[0].message.content.strip()
+        return get_message_content(response).strip()
 
     except Exception as e:
         logger.error("Response generation failed", extra={"error": str(e)})

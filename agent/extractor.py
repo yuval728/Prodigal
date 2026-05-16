@@ -5,18 +5,17 @@ Dedicated extraction layer, separate from response generation.
 Only job: extract structured fields from messy natural language.
 """
 
-import json
 import logging
 import os
 import re
 
-from openai import OpenAI
+from .llm import chat_completion, get_message_content, parse_json_object
 
 from .state import ExtractedFields, Stage, ConversationState
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "gpt-4o-mini")
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "groq/llama-3.1-8b-instant")
 
 EXTRACTION_SYSTEM_PROMPT = """
 You are a field extraction engine for a payment collection agent.
@@ -54,9 +53,10 @@ def extract_fields(user_input: str, stage: Stage, state: ConversationState) -> E
     """
     prompt = _build_extraction_prompt(user_input, stage, state)
 
+    extracted = ExtractedFields()
+
     try:
-        client = OpenAI()
-        response = client.chat.completions.create(
+        response = chat_completion(
             model=EXTRACTION_MODEL,
             messages=[
                 {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
@@ -66,13 +66,35 @@ def extract_fields(user_input: str, stage: Stage, state: ConversationState) -> E
             response_format={"type": "json_object"},
             max_tokens=300,
         )
-        raw = response.choices[0].message.content
-        data = json.loads(raw)
-        return _parse_extraction_response(data)
-
+        raw = get_message_content(response)
+        data = parse_json_object(raw)
+        if not data:
+            raise ValueError("JSON parse failed")
+        extracted = _parse_extraction_response(data)
     except Exception as e:
         logger.warning("Field extraction failed", extra={"error": str(e), "stage": stage.name})
-        return ExtractedFields()
+        try:
+            response = chat_completion(
+                model=EXTRACTION_MODEL,
+                messages=[
+                    {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+                max_tokens=300,
+            )
+            raw = get_message_content(response)
+            data = parse_json_object(raw)
+            if data:
+                extracted = _parse_extraction_response(data)
+        except Exception as retry_error:
+            logger.warning(
+                "Field extraction fallback failed",
+                extra={"error": str(retry_error), "stage": stage.name},
+            )
+
+    fallback = _fallback_extract_fields(user_input, stage)
+    return _merge_fields(extracted, fallback)
 
 
 def _parse_extraction_response(data: dict) -> ExtractedFields:
@@ -130,3 +152,111 @@ def _build_extraction_prompt(user_input: str, stage: Stage, state: ConversationS
 
     hint = stage_hints.get(stage, "Extract any relevant fields.")
     return f"Stage: {stage.name}\nContext: {hint}\nUser message: \"{user_input}\"\n\nExtract fields. JSON only."
+
+
+def _merge_fields(primary: ExtractedFields, fallback: ExtractedFields) -> ExtractedFields:
+    """Fill empty fields from fallback extraction."""
+    for field_name in primary.__dataclass_fields__.keys():
+        if getattr(primary, field_name) is None and getattr(fallback, field_name) is not None:
+            setattr(primary, field_name, getattr(fallback, field_name))
+    return primary
+
+
+def _fallback_extract_fields(user_input: str, stage: Stage) -> ExtractedFields:
+    """Heuristic fallback extraction for common patterns."""
+    fields = ExtractedFields()
+    text = user_input.strip()
+    lower = text.lower()
+
+    account_match = re.search(r"acc\s*[-:]?\s*(\d{4})", text, re.IGNORECASE)
+    if account_match:
+        fields.account_id = f"ACC{account_match.group(1)}"
+
+    if "aadhaar" in lower or "aadhar" in lower:
+        aadhaar_match = re.search(r"\b\d{4}\b", lower)
+        if aadhaar_match:
+            fields.aadhaar_last4 = aadhaar_match.group(0)
+
+    pincode_match = re.search(r"\b\d{6}\b", lower)
+    if pincode_match:
+        fields.pincode = pincode_match.group(0)
+    else:
+        spaced_pin = re.search(r"(\d\s){5}\d", lower)
+        if spaced_pin:
+            fields.pincode = spaced_pin.group(0).replace(" ", "")
+
+    if "dob" in lower or "date of birth" in lower or "born" in lower:
+        dob_match = re.search(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", lower)
+        if dob_match:
+            fields.dob = dob_match.group(0)
+        else:
+            month_match = re.search(
+                r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{2,4}\b",
+                lower,
+            )
+            if month_match:
+                fields.dob = month_match.group(0)
+            else:
+                rev_month_match = re.search(
+                    r"\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{2,4}\b",
+                    lower,
+                )
+                if rev_month_match:
+                    fields.dob = rev_month_match.group(0)
+
+    if any(phrase in lower for phrase in ["full amount", "clear the full", "pay all", "clear all", "total amount", "pay it all"]):
+        fields.amount = "full amount"
+    else:
+        amount_match = re.search(r"\b\d+(?:\.\d+)?\b", lower)
+        if amount_match and stage == Stage.BALANCE_DISCLOSURE:
+            fields.amount = amount_match.group(0)
+
+    card_digits = re.sub(r"\D", "", text)
+    if len(card_digits) in (15, 16) and ("card" in lower or stage == Stage.CARD_COLLECTION):
+        fields.card_number = card_digits
+
+    if "cvv" in lower:
+        cvv_match = re.search(r"\b\d{3,4}\b", lower)
+        if cvv_match:
+            fields.cvv = cvv_match.group(0)
+        else:
+            fields.cvv = _parse_spelled_digits(lower)
+
+    if any(word in lower for word in ["exp", "expiry", "expires", "valid till", "valid through"]):
+        exp_match = re.search(r"\b\d{1,2}[/-]\d{2,4}\b", lower)
+        if exp_match:
+            fields.expiry = exp_match.group(0)
+        else:
+            month_exp = re.search(
+                r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{2,4}\b",
+                lower,
+            )
+            if month_exp:
+                fields.expiry = month_exp.group(0)
+
+    if stage == Stage.IDENTITY_COLLECTION:
+        name_match = re.search(r"\bmy name is\s+(.+)$", text, re.IGNORECASE)
+        if name_match:
+            fields.full_name = name_match.group(1).strip()
+
+    if "cardholder" in lower or "name on card" in lower:
+        card_name_match = re.search(r"(?:cardholder(?: name)?|name on card)\s*(?:is)?\s*(.+)$", text, re.IGNORECASE)
+        if card_name_match:
+            fields.cardholder_name = card_name_match.group(1).strip()
+
+    return fields
+
+
+def _parse_spelled_digits(text: str) -> str | None:
+    """Convert short digit words like 'one two three' into '123'."""
+    mapping = {
+        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    }
+    tokens = re.findall(r"zero|one|two|three|four|five|six|seven|eight|nine", text)
+    if not tokens:
+        return None
+    digits = "".join(mapping[token] for token in tokens)
+    if 3 <= len(digits) <= 4:
+        return digits
+    return None
