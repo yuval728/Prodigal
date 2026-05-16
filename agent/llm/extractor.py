@@ -1,56 +1,21 @@
-"""
-extractor.py — LLM-powered structured field extraction.
-
-Dedicated extraction layer, separate from response generation.
-Only job: extract structured fields from messy natural language.
-"""
+"""LLM-powered field extraction."""
 
 import logging
 import os
 import re
 
-from .llm import chat_completion, get_message_content, parse_json_object
-
-from .state import ExtractedFields, Stage, ConversationState
+from .client import chat_completion, get_message_content, parse_json_object
+from .prompts import EXTRACTION_SYSTEM_PROMPT
+from ..domain.models import ExtractedFields
+from ..domain.stage import Stage
+from ..domain.state import ConversationState
 
 logger = logging.getLogger(__name__)
 
 EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "groq/llama-3.1-8b-instant")
 
-EXTRACTION_SYSTEM_PROMPT = """
-You are a field extraction engine for a payment collection agent.
-Your ONLY job is to extract structured data from user messages.
-
-Output STRICTLY valid JSON with these possible fields (omit fields not found, do not include null values):
-{
-  "account_id": "ACC1001",
-  "full_name": "Nithin Jain",
-  "dob": "14 May 1990",
-  "aadhaar_last4": "4321",
-  "pincode": "400001",
-  "amount": "500",
-  "card_number": "4532015112830366",
-  "cvv": "123",
-  "expiry": "12/2027",
-  "cardholder_name": "Nithin Jain"
-}
-
-RULES:
-- Omit any field not clearly present in the message
-- full_name: preserve EXACT casing as stated by the user
-- card_number: strip all spaces/dashes, return digits only
-- dob: return the RAW value as the user said it, do NOT normalize to ISO
-- amount: return the raw phrase ("full amount", "500", "a thousand rupees")
-- Do NOT hallucinate fields not present
-- Do NOT infer — only extract what is explicitly stated
-""".strip()
-
 
 def extract_fields(user_input: str, stage: Stage, state: ConversationState) -> ExtractedFields:
-    """
-    Extract structured fields from free-form user input.
-    Never raises — returns empty ExtractedFields on any failure.
-    """
     prompt = _build_extraction_prompt(user_input, stage, state)
 
     extracted = ExtractedFields()
@@ -98,7 +63,6 @@ def extract_fields(user_input: str, stage: Stage, state: ConversationState) -> E
 
 
 def _parse_extraction_response(data: dict) -> ExtractedFields:
-    """Map LLM JSON output to ExtractedFields. Handles None and type issues safely."""
     fields = ExtractedFields()
 
     if data.get("account_id"):
@@ -126,7 +90,6 @@ def _parse_extraction_response(data: dict) -> ExtractedFields:
 
 
 def _build_extraction_prompt(user_input: str, stage: Stage, state: ConversationState) -> str:
-    """Build stage-aware extraction prompt to reduce false positives."""
     balance_str = f"₹{state.account_data.balance:,.2f}" if state.account_data else "unknown"
 
     stage_hints = {
@@ -155,7 +118,6 @@ def _build_extraction_prompt(user_input: str, stage: Stage, state: ConversationS
 
 
 def _merge_fields(primary: ExtractedFields, fallback: ExtractedFields) -> ExtractedFields:
-    """Fill empty fields from fallback extraction."""
     for field_name in primary.__dataclass_fields__.keys():
         if getattr(primary, field_name) is None and getattr(fallback, field_name) is not None:
             setattr(primary, field_name, getattr(fallback, field_name))
@@ -163,7 +125,6 @@ def _merge_fields(primary: ExtractedFields, fallback: ExtractedFields) -> Extrac
 
 
 def _fallback_extract_fields(user_input: str, stage: Stage) -> ExtractedFields:
-    """Heuristic fallback extraction for common patterns."""
     fields = ExtractedFields()
     text = user_input.strip()
     lower = text.lower()
@@ -248,7 +209,6 @@ def _fallback_extract_fields(user_input: str, stage: Stage) -> ExtractedFields:
 
 
 def _parse_spelled_digits(text: str) -> str | None:
-    """Convert short digit words like 'one two three' into '123'."""
     mapping = {
         "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
         "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",

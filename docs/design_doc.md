@@ -38,11 +38,11 @@ User Input
 
 | Layer | Responsibility | LLM? |
 |---|---|---|
-| `extractor.py` | Parse structured fields from free-form text | Yes (LiteLLM, temp=0) |
-| `agent.py` | State machine, transitions, business logic | No |
-| `validators.py` | Input validation, Luhn check, date parsing | No |
-| `tools.py` | API calls with retry/backoff | No |
-| `responder.py` | Generate natural language responses | Yes (LiteLLM, temp=0.3) |
+| `agent/llm/extractor.py` | Parse structured fields from free-form text | Yes (LiteLLM, temp=0) |
+| `agent/core/state_machine.py` | State machine, transitions, business logic | No |
+| `agent/validation/normalizers.py` | Input normalization, Luhn check, date parsing | No |
+| `agent/api/client.py` | API calls with retry/backoff | No |
+| `agent/llm/responder.py` | Generate natural language responses | Yes (LiteLLM, temp=0.3) |
 
 ---
 

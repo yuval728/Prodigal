@@ -1,7 +1,6 @@
-"""
-Payment Collection AI Agent package.
-"""
+"""Payment Collection AI Agent package."""
 
-from .agent import Agent
+from .core import Agent
+from .domain import Stage, ConversationState
 
-__all__ = ["Agent"]
+__all__ = ["Agent", "Stage", "ConversationState"]

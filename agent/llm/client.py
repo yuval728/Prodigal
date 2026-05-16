@@ -1,9 +1,4 @@
-"""
-llm.py — LiteLLM helper utilities.
-
-Centralizes LiteLLM usage and response parsing so other modules
-can focus on business logic and error handling.
-"""
+"""LiteLLM client helpers."""
 
 from __future__ import annotations
 
@@ -24,7 +19,6 @@ def chat_completion(
     max_tokens: int,
     response_format: Optional[dict[str, str]] = None,
 ) -> Any:
-    """Run a chat completion via LiteLLM and return the raw response."""
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -37,7 +31,6 @@ def chat_completion(
 
 
 def get_message_content(response: Any) -> str:
-    """Extract the first message content from a LiteLLM response."""
     try:
         return response["choices"][0]["message"]["content"]
     except Exception as exc:
@@ -45,7 +38,6 @@ def get_message_content(response: Any) -> str:
 
 
 def parse_json_object(raw: str) -> Optional[dict[str, Any]]:
-    """Parse the first JSON object in a string, if any."""
     raw = raw.strip()
     if not raw:
         return None
@@ -57,7 +49,6 @@ def parse_json_object(raw: str) -> Optional[dict[str, Any]]:
     except Exception:
         pass
 
-    # Fallback: extract content between the first and last brace
     start = raw.find("{")
     end = raw.rfind("}")
     if start == -1 or end == -1 or end <= start:

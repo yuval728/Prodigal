@@ -8,12 +8,24 @@ A production-grade conversational AI agent that handles end-to-end payment colle
 
 ```
 agent/
-├── agent.py        # State machine orchestrator — the Agent class
-├── extractor.py    # LLM extraction layer (gpt-4o-mini, JSON output)
-├── responder.py    # LLM response generation (gpt-4o)
-├── validators.py   # Pure-Python validation (Luhn, dates, amounts)
-├── tools.py        # API integration (lookup-account, process-payment)
-└── state.py        # ConversationState, Stage enum, constants
+├── core/
+│   ├── agent.py        # Agent wrapper (public interface)
+│   └── state_machine.py# State machine handlers & routing
+├── domain/
+│   ├── stage.py        # Stage enum
+│   ├── models.py       # ExtractedFields, AccountData, CardDetails
+│   └── state.py        # ConversationState + constants
+├── validation/
+│   ├── normalizers.py  # normalize_* helpers
+│   └── validators.py   # verify_identity
+├── api/
+│   ├── client.py       # HTTP calls
+│   └── models.py       # API result models
+└── llm/
+      ├── client.py       # LiteLLM wrapper
+      ├── prompts.py      # System prompts
+      ├── extractor.py    # LLM extraction
+      └── responder.py    # LLM response generation
 
 eval/
 └── evaluator.py    # 15 test scenarios + LLM judge scoring
@@ -27,7 +39,7 @@ conversations/
 run_agent.py        # CLI runner (interactive + demo modes)
 ```
 
-**Key design**: Two-LLM pipeline per turn. A fast extraction model (gpt-4o-mini, temp=0) parses structured fields from messy natural language. A separate response model (gpt-4o, temp=0.3) generates the reply. All business logic — state transitions, verification, validation — runs in deterministic Python between these two calls.
+**Key design**: Two-LLM pipeline per turn. A fast extraction model (LiteLLM, temp=0) parses structured fields from messy natural language. A separate response model (LiteLLM, temp=0.3) generates the reply. All business logic — state transitions, verification, validation — runs in deterministic Python between these two calls.
 
 ---
 
