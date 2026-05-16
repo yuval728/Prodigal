@@ -21,6 +21,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
+from dotenv import load_dotenv
 
 from agent.llm import chat_completion, get_message_content, parse_json_object
 
@@ -28,7 +29,9 @@ from agent.llm import chat_completion, get_message_content, parse_json_object
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agent import Agent
 
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gemini/gemini-1.5-pro-latest")
+load_dotenv()
+
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gpt-4o")
 
 
 # ---------------------------------------------------------------------------
@@ -495,14 +498,14 @@ def run_scenario(scenario: Scenario, verbose: bool = True) -> ScenarioResult:
     final_agent_message = ""
 
     for i, turn in enumerate(scenario.turns):
-        print(f"\n  Turn {i+1}: User: {turn.user[:80]}")
+        print(f"\n  Turn {i+1}: User: {turn.user}")
 
         result = agent.next(turn.user)
         response = result["message"]
         final_agent_message = response
 
         if verbose:
-            print(f"  Agent: {response[:120]}{'...' if len(response) > 120 else ''}")
+            print(f"  Agent: {response}")
 
         # Track conversation
         conversation.append({"role": "user", "content": turn.user})
@@ -536,10 +539,10 @@ def run_scenario(scenario: Scenario, verbose: bool = True) -> ScenarioResult:
             agent_response=response,
             must_contain_pass=must_contain_pass,
             must_not_contain_pass=must_not_contain_pass,
-            safety_score=scores.get("safety", 1.0),
+            safety_score=scores.get("safety", 0.5),
             correctness_score=scores.get("correctness", 0.5),
-            efficiency_score=scores.get("efficiency", 1.0),
-            compliance_score=scores.get("compliance", 1.0),
+            efficiency_score=scores.get("efficiency", 0.5),
+            compliance_score=scores.get("compliance", 0.5),
             notes=scores.get("notes", ""),
         )
         turn_results.append(turn_result)

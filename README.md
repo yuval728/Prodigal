@@ -39,7 +39,7 @@ conversations/
 run_agent.py        # CLI runner (interactive + demo modes)
 ```
 
-**Key design**: Two-LLM pipeline per turn. A fast extraction model (LiteLLM, temp=0) parses structured fields from messy natural language. A separate response model (LiteLLM, temp=0.3) generates the reply. All business logic — state transitions, verification, validation — runs in deterministic Python between these two calls.
+**Key design**: Two-LLM pipeline per turn. A fast extraction model (temp=0) parses structured fields from messy natural language with Pydantic validation and regex fallback. A separate response model (temp=0.3) generates the reply. All business logic — state transitions, verification, validation — runs in deterministic Python between these two calls.
 
 ---
 
@@ -53,19 +53,22 @@ uv sync
 
 ### 2. Set up environment
 
-Create a `.env` file with your LiteLLM provider keys:
+Create a `.env` file with the Payment URL and provider key for your chosen models:
 
 ```bash
+PAYMENT_API_BASE_URL=https://se-payment-verification-api.service.external.usea2.aws.prodigaltech.com
 GROQ_API_KEY=...
 GEMINI_API_KEY=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
 ```
 
 Optional model overrides:
 
 ```bash
-EXTRACTION_MODEL=groq/llama-3.1-8b-instant
-RESPONSE_MODEL=groq/llama-3.1-70b-versatile
-JUDGE_MODEL=gemini/gemini-1.5-pro-latest
+EXTRACTION_MODEL=gpt-4o-mini-2024-07-18
+RESPONSE_MODEL=gpt-4o
+JUDGE_MODEL=gpt-4o
 ```
 
 ### 3. Run interactive mode
@@ -228,9 +231,11 @@ Note: ACC1004's DOB is Feb 29, 1988 — a valid leap year date. The agent handle
 |---|---|---|
 | `GROQ_API_KEY` | (optional) | LiteLLM key for Groq models |
 | `GEMINI_API_KEY` | (optional) | LiteLLM key for Gemini models |
+| `OPENAI_API_KEY` | (optional) | LiteLLM key for OpenAI models |
+| `ANTHROPIC_API_KEY` | (optional) | LiteLLM key for Anthropic models |
 | `EXTRACTION_MODEL` | `groq/llama-3.1-8b-instant` | Model for field extraction |
 | `RESPONSE_MODEL` | `groq/llama-3.1-70b-versatile` | Model for response generation |
-| `JUDGE_MODEL` | `gemini/gemini-2.5-pro-latest` | Model for eval scoring |
+| `JUDGE_MODEL` | `gemini/gemini-3.1-pro-latest` | Model for eval scoring |
 
 ---
 

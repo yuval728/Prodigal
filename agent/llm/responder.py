@@ -9,7 +9,7 @@ from ..domain.state import ConversationState
 
 logger = logging.getLogger(__name__)
 
-RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "groq/llama-3.1-70b-versatile")
+RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "gpt-4o")
 
 
 def generate_response(state: ConversationState, situation: dict) -> str:
@@ -37,7 +37,7 @@ Generate a single, clear agent response for this situation.
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.3,
-            max_tokens=250,
+            max_tokens=1000,
         )
         return get_message_content(response).strip()
 

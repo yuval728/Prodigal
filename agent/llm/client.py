@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any, Optional
 
-from litellm import completion
+from litellm import completion_with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +18,23 @@ def chat_completion(
     temperature: float,
     max_tokens: int,
     response_format: Optional[dict[str, str]] = None,
+    tools: Optional[list[dict[str, Any]]] = None,
+    tool_choice: Optional[str | dict[str, Any]] = None,
 ) -> Any:
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        
     }
     if response_format:
         kwargs["response_format"] = response_format
-    return completion(**kwargs)
+    if tools:
+        kwargs["tools"] = tools
+    if tool_choice:
+        kwargs["tool_choice"] = tool_choice
+    return completion_with_retries(**kwargs)
 
 
 def get_message_content(response: Any) -> str:

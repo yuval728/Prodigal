@@ -10,7 +10,9 @@ from .models import AccountLookupSuccess, AccountLookupError, PaymentSuccess, Pa
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = os.getenv("PAYMENT_API_BASE_URL", "https://se-payment-verification-api.service.external.usea2.aws.prodigaltech.com")
+
+
+BASE_URL = os.getenv("PAYMENT_API_BASE_URL", "http://localhost:8000")
 REQUEST_TIMEOUT = 10.0  # seconds
 MAX_RETRIES = 3
 BACKOFF_BASE = 1.5
@@ -154,6 +156,10 @@ def process_payment(
                     )
                     return PaymentSuccess(transaction_id=data["transaction_id"])
 
+            if response.status_code >= 500:
+                logger.warning("process_payment upstream server error", extra={"status": response.status_code})
+                response.raise_for_status()
+
             try:
                 error_data = response.json()
                 error_code = error_data.get("error_code", "unknown_error")
@@ -171,7 +177,7 @@ def process_payment(
             )
             return PaymentError(error_code=error_code, message=user_message, retryable=retryable)
 
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as e:
             logger.warning("process_payment network error", extra={"attempt": attempt, "error": str(e)})
             if attempt < MAX_RETRIES - 1:
                 time.sleep(BACKOFF_BASE ** attempt)

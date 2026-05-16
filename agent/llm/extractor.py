@@ -15,7 +15,7 @@ from ..domain.state import ConversationState
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "groq/llama-3.1-8b-instant")
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "gpt-4o-mini-2024-07-18")
 
 
 
